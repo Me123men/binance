@@ -1,0 +1,79 @@
+<html>
+    <head><title>chart</title>
+        <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
+    </head>
+    <body>
+    <h1>Trades</h1>
+    <div id="chart"></div>
+    <div id="trades"></div>
+    <div style="border: solid gray; padding: 20px; width: 600px; margin-top: 20px;">
+        <h3>Buy Crypto</h3>
+        {% with messages = get_flashed_messages() %}
+         {% if messages %}
+         {% for message in messages %}
+          {{message}}
+          {% endfor %}
+          {% endif%}
+        {% endwith%}
+         
+        <form action="/buy" method="post">
+            <input type="text" id="quantity" name="quantity" placeholder="ed. 0.001kr"/>
+            <select name="symbol">
+                {% for symbol in symbols %}
+                    <option>{{ symbol['symbol'] }}</option>
+                {% endfor %}
+            </select>
+             <input type="submit" name="buy" value="buy"/>
+        </form>
+    </div>
+       
+        
+    
+    <div id="minapengar">
+        <h2>Balances</h2>
+        <table>
+        {% for balance in minapengar %}
+        <tr>
+            <td>
+                {{ balance['asset'] }}
+            </td>
+            <td>
+                {{ balance['free'] }}
+            </td>
+        </tr>
+        {% endfor %}
+        </table>
+    
+    </div>
+
+    <h3>settings</h3>
+    <div id="settings">
+        <div>
+            <input type="checkbox" /> RSA
+            <input type="text" id="rsa-lenght" name="rsa-length" placeholder="14" />
+            Oversold
+            <input type="text" id="rsa-oversold" name="rsa-oversold" placeholder="30" />
+            Overbought
+            <input type="text" id="rsa-overbought" name="rsa-overbought" placeholder="70" />
+
+        </div>
+    </div>
+        <script>
+        
+        const exampleSocket = new WebSocket("wss://stream.binance.us:9443/ws/btcusdt@trade");
+            console.log(exampleSocket);
+            var tradeDiv = document.getElementById('trades');
+
+
+            exampleSocket.onmessage = function (event){
+                console.log(event.data);
+                var messageObject = JSON.parse(event.data);
+
+                tradeDiv.append(messageObject.p);
+            }
+
+             </script>
+
+             <script src="{{ url_for('static', filename='chart.js')}}"></script>
+    </body>
+</html>

@@ -1,5 +1,5 @@
 #!/bin/sh
-'''exec' "/Users/jn6900bashirshojai/Desktop/binance robot/myenv/bin/python" "$0" "$@"
+'''exec' "/Users/jn6900bashirshojai/Desktop/binance robot/myenv/bin/python3.10" "$0" "$@"
 ' '''
 # -*- coding: utf-8 -*-
 import re

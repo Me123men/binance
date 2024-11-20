@@ -9,3 +9,112 @@ const exampleSocket = new WebSocket(
 );
 
 https://www.youtube.com/watch?v=Y-HFJkeJyc4
+
+python -u "/Users/jn6900bashirshojai/Desktop/binance robot/bot.py"
+
+
+
+import websocket, json, pprint, talib, numpy, config
+import requests
+from binance.client import Client
+from binance.enums import *
+
+# Lista över kryptovalutapar som ska övervakas
+SYMBOLS = ['shibusdt', 'ethusdt']
+SOCKET = f"wss://stream.binance.com:9443/ws/" + '/'.join([f"{symbol}@kline_1m" for symbol in SYMBOLS])
+
+RSA_PERIOD = 14
+RSA_OVERBOUGHT = 70
+RSA_OVERSOLD = 30
+TRADE_QUANTITY = {'SHIBUSDT': 100000, 'ETHUSDT': 0.05}  # Justera handelsstorleken per symbol
+
+TELEGRAM_TOKEN = "7778387643:AAEOS9wcNTPKKo34vTD3FSkew_MsKWjtcJI"
+TELEGRAM_CHAT_ID = "8069456620"
+
+closes = {symbol: [] for symbol in SYMBOLS}
+in_position = {symbol: False for symbol in SYMBOLS}
+
+client = Client(config.API_KEY, config.API_SECRET)
+
+def send_telegram_message(text):
+    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+    payload = {"chat_id": TELEGRAM_CHAT_ID, "text": text}
+    try:
+        response = requests.post(url, data=payload)
+        response.raise_for_status()
+        print("Telegram-meddelande skickat:", text)
+    except Exception as e:
+        print("Kunde inte skicka Telegram-meddelande:", e)
+
+def order(symbol, side, quantity, order_type=ORDER_TYPE_MARKET):
+    try:
+        print(f"Skickar order för {symbol}")
+        order = client.create_order(symbol=symbol, side=side, type=order_type, quantity=quantity)
+        print(order)
+        send_telegram_message(f"Order utförd: {side} {quantity} {symbol}")
+        return True
+    except Exception as e:
+        print(f"Order misslyckades för {symbol}:", e)
+        return False
+
+def is_hammer_candle(open_price, close_price, high_price, low_price):
+    body = abs(close_price - open_price)
+    lower_shadow = open_price - low_price if close_price > open_price else close_price - low_price
+    upper_shadow = high_price - close_price if close_price > open_price else high_price - open_price
+    
+    # Kontrollera om body är minst tre gånger mindre än lower shadow och minst en gång större än upper shadow
+    return lower_shadow >= (body * 3) and body > upper_shadow
+
+def on_open(ws):
+    print('Öppnade anslutning')
+
+def on_close(ws):
+    print('Stängde anslutning')
+
+def on_message(ws, message):
+    global closes, in_position
+
+    json_message = json.loads(message)
+    candle = json_message['k']
+    symbol = json_message['s'].lower()  # Symbolen för att veta vilken valuta som mottagits
+    is_candle_closed = candle['x']
+    close = float(candle['c'])
+    open_price = float(candle['o'])
+    high = float(candle['h'])
+    low = float(candle['l'])
+
+    if is_candle_closed:
+        print(f"Ljus stängd för {symbol} vid {close}")
+        closes[symbol].append(close)
+
+        # Kontrollera om hammarljusstake
+        if is_hammer_candle(open_price, close, high, low):
+            send_telegram_message(f"Hammarljusstake upptäckt på {symbol.upper()} vid pris {close}")
+
+        # RSI-beräkning och trading-logik
+        if len(closes[symbol]) > RSA_PERIOD:
+            np_closes = numpy.array(closes[symbol])
+            rsi = talib.RSI(np_closes, RSA_PERIOD)
+            last_rsi = rsi[-1]
+            print(f"Den nuvarande RSI för {symbol.upper()} är {last_rsi}")
+
+            if last_rsi > RSA_OVERBOUGHT:
+                if in_position[symbol]:
+                    print(f"Sälj, sälj, sälj för {symbol.upper()}")
+                    order_succeded = order(symbol.upper(), SIDE_SELL, TRADE_QUANTITY[symbol.upper()])
+                    if order_succeded:
+                        in_position[symbol] = False
+                else:
+                    print(f"Inget att göra för {symbol.upper()}")
+
+            if last_rsi < RSA_OVERSOLD:
+                if in_position[symbol]:
+                    print(f"Inget att göra för {symbol.upper()}")
+                else:
+                    print(f"KÖP KÖP för {symbol.upper()}")
+                    order_succeded = order(symbol.upper(), SIDE_BUY, TRADE_QUANTITY[symbol.upper()])
+                    if order_succeded:
+                        in_position[symbol] = True
+
+ws = websocket.WebSocketApp(SOCKET, on_open=on_open, on_close=on_close, on_message=on_message)
+ws.run_forever()

@@ -15,8 +15,10 @@ client = Client(config.API_KEY, config.API_SECRET)
 
 
 # Lista över kryptovalutapar som ska övervakas
-SYMBOLS = ['shibusdt', 'ethusdt']
-SOCKET = f"wss://stream.binance.com:9443/ws/" + '/'.join([f"{symbol}@kline_1m" for symbol in SYMBOLS])
+SYMBOLS = ['shibusdt', 'ethusdt', 'dogeusdt', 'dotusdt', 'duskusdt', 'dogsusdt', 'dydxusdt', 'fttusdt', 'glmrusdt', 'hbarusdt']
+TIMEFRAMES = ['5m', '15m', '30m', '1h']
+SOCKET = f"wss://stream.binance.com:9443/ws/" + '/'.join([f"{symbol}@kline_{tf}" for symbol in SYMBOLS for tf in TIMEFRAMES])
+
 
 TRADE_QUANTITY = {'SHIBUSDT': 100000, 'ETHUSDT': 0.05}  # Justera handelsstorleken per symbol
 
@@ -45,6 +47,23 @@ def is_hammer_candle(open_price, close_price, high_price, low_price):
     # Kontrollera om body är minst tre gånger mindre än lower shadow och minst en gång större än upper shadow
     return lower_shadow >= (body * 3) and body > upper_shadow
 
+def is_is_hammer_candle(open_price, close_price, high_price, low_price):
+    body = abs(close_price - open_price)
+    lower_shadow = open_price - low_price if close_price > open_price else close_price - low_price
+    upper_shadow = high_price - close_price if close_price > open_price else high_price - open_price
+    
+    # Kontrollera om body är minst tre gånger mindre än lower shadow och minst en gång större än upper shadow
+    return upper_shadow >= 2 * body and (lower_shadow == 0 or body > lower_shadow)
+
+
+def w_is_hammer_candle(open_price, close_price, high_price, low_price):
+    body = abs(close_price - open_price)
+    lower_shadow = open_price - low_price if close_price > open_price else close_price - low_price
+    upper_shadow = high_price - close_price if close_price > open_price else high_price - open_price
+    
+    # Kontrollera om body är minst tre gånger mindre än lower shadow och minst en gång större än upper shadow
+    return lower_shadow >= (body * 2) and (upper_shadow == 0 or body > upper_shadow)
+
 def on_open(ws):
     print('Öppnade anslutning')
 
@@ -57,6 +76,7 @@ def on_message(ws, message):
     json_message = json.loads(message)
     candle = json_message['k']
     symbol = json_message['s'].lower()  # Symbolen för att veta vilken valuta som mottagits
+    interval = candle['i']  # Tidsram (t.ex. '1m', '5m', etc.)
     is_candle_closed = candle['x']
     close = float(candle['c'])
     open_price = float(candle['o'])
@@ -64,13 +84,20 @@ def on_message(ws, message):
     low = float(candle['l'])
 
     if is_candle_closed:
-        print(f"Ljus stängd för {symbol} vid {close}")
-        closes[symbol].append(close)
+        print(f"Ljus stängt för {symbol.upper()} på tidsram {interval} vid {close}")
+        closes[symbol][interval].append(close)
 
-        # Kontrollera om hammarljusstake
+        # Kontrollera om hammarljusformation upptäcks för denna tidsram
         if is_hammer_candle(open_price, close, high, low):
-            send_telegram_message(f"Hammarljusstake upptäckt på {symbol.upper()} vid pris {close}")
+            send_telegram_message(f"Hammarljusstake upptäckt på {symbol.upper()} i tidsram {interval} vid pris {close}")
+        
+        if is_is_hammer_candle(open_price, close, high, low):
+            send_telegram_message(f"Hammarljusstake upptäckt på {symbol.upper()} i tidsram {interval} vid pris {close}")
 
+        if w_is_hammer_candle(open_price, close, high, low):
+            send_telegram_message(f"Hammarljusstake upptäckt på {symbol.upper()} i tidsram {interval} vid pris {close}")
+
+# Starta WebSocket
 ws = websocket.WebSocketApp(SOCKET, on_open=on_open, on_close=on_close, on_message=on_message)
 ws.run_forever()
 

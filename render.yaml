@@ -1,9 +1,0 @@
-services:
-  - type: web
-    name: MyBotService
-    env: python
-    buildCommand: |
-      apt-get update && apt-get install -y libta-lib0-dev
-      pip install -r requirements.txt
-    startCommand: "python bot.py"
-    pythonVersion: 3.11

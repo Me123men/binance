@@ -1,34 +1,38 @@
-import websocket, json, pprint, numpy, config
-import requests
-from binance.client import Client
-from binance.enums import *
-
 import os
+import json
+import requests
+import threading
+from flask import Flask
+import websocket
+from binance.client import Client
 
-# Hämta från miljövariabler
-TELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN')
-TELEGRAM_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
+# Flask-server för att göra boten till en webbtjänst
+app = Flask(__name__)
+
+@app.route('/')
+def index():
+    return "Bot is running!"
+
+# Binance-klient och inställningar
 API_KEY = os.getenv('BINANCE_API_KEY')
 API_SECRET = os.getenv('BINANCE_API_SECRET')
+TELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN')
+TELEGRAM_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
 
-client = Client(config.API_KEY, config.API_SECRET)
+client = Client(API_KEY, API_SECRET)
 
-
-# Lista över kryptovalutapar som ska övervakas
+# Kryptovalutapar och tidsramar
 SYMBOLS = ['shibusdt', 'ethusdt', 'dogeusdt', 'dotusdt', 'duskusdt', 'dogsusdt', 'dydxusdt', 'fttusdt', 'glmrusdt', 'hbarusdt']
 TIMEFRAMES = ['5m', '15m', '30m', '1h']
 SOCKET = f"wss://stream.binance.com:9443/ws/" + '/'.join([f"{symbol}@kline_{tf}" for symbol in SYMBOLS for tf in TIMEFRAMES])
 
+# Handelsstorlekar per par
+TRADE_QUANTITY = {'SHIBUSDT': 100000, 'ETHUSDT': 0.05}
 
-TRADE_QUANTITY = {'SHIBUSDT': 100000, 'ETHUSDT': 0.05}  # Justera handelsstorleken per symbol
-
-TELEGRAM_TOKEN = "7778387643:AAEOS9wcNTPKKo34vTD3FSkew_MsKWjtcJI"
-TELEGRAM_CHAT_ID = "8069456620"
-
+# Data för att spåra stängda ljus
 closes = {symbol: [] for symbol in SYMBOLS}
 
-client = Client(config.API_KEY, config.API_SECRET)
-
+# Funktion för att skicka Telegram-meddelanden
 def send_telegram_message(text):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     payload = {"chat_id": TELEGRAM_CHAT_ID, "text": text}
@@ -39,31 +43,26 @@ def send_telegram_message(text):
     except Exception as e:
         print("Kunde inte skicka Telegram-meddelande:", e)
 
+# Funktioner för att upptäcka hammarljusformationer
 def is_hammer_candle(open_price, close_price, high_price, low_price):
     body = abs(close_price - open_price)
     lower_shadow = open_price - low_price if close_price > open_price else close_price - low_price
     upper_shadow = high_price - close_price if close_price > open_price else high_price - open_price
-    
-    # Kontrollera om body är minst tre gånger mindre än lower shadow och minst en gång större än upper shadow
     return lower_shadow >= (body * 3) and body > upper_shadow
 
 def is_is_hammer_candle(open_price, close_price, high_price, low_price):
     body = abs(close_price - open_price)
     lower_shadow = open_price - low_price if close_price > open_price else close_price - low_price
     upper_shadow = high_price - close_price if close_price > open_price else high_price - open_price
-    
-    # Kontrollera om body är minst tre gånger mindre än lower shadow och minst en gång större än upper shadow
     return upper_shadow >= 2 * body and (lower_shadow == 0 or body > lower_shadow)
-
 
 def w_is_hammer_candle(open_price, close_price, high_price, low_price):
     body = abs(close_price - open_price)
     lower_shadow = open_price - low_price if close_price > open_price else close_price - low_price
     upper_shadow = high_price - close_price if close_price > open_price else high_price - open_price
-    
-    # Kontrollera om body är minst tre gånger mindre än lower shadow och minst en gång större än upper shadow
     return lower_shadow >= (body * 2) and (upper_shadow == 0 or body > upper_shadow)
 
+# WebSocket-funktioner
 def on_open(ws):
     print('Öppnade anslutning')
 
@@ -85,7 +84,7 @@ def on_message(ws, message):
 
     if is_candle_closed:
         print(f"Ljus stängt för {symbol.upper()} på tidsram {interval} vid {close}")
-        closes[symbol][interval].append(close)
+        closes[symbol].append(close)
 
         # Kontrollera om hammarljusformation upptäcks för denna tidsram
         if is_hammer_candle(open_price, close, high, low):
@@ -98,7 +97,19 @@ def on_message(ws, message):
             send_telegram_message(f"Hammarljusstake upptäckt på {symbol.upper()} i tidsram {interval} vid pris {close}")
 
 # Starta WebSocket
-ws = websocket.WebSocketApp(SOCKET, on_open=on_open, on_close=on_close, on_message=on_message)
-ws.run_forever()
+def start_websocket():
+    ws = websocket.WebSocketApp(SOCKET, on_open=on_open, on_close=on_close, on_message=on_message)
+    ws.run_forever()
+
+# Starta Flask-server och WebSocket i bakgrunden
+if __name__ == "__main__":
+    # Starta WebSocket i en separat tråd
+    websocket_thread = threading.Thread(target=start_websocket)
+    websocket_thread.daemon = True
+    websocket_thread.start()
+
+    # Starta Flask-servern
+    PORT = int(os.getenv("PORT", 8080))
+    app.run(host="0.0.0.0", port=PORT)
 
 

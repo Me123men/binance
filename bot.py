@@ -25,7 +25,7 @@ TELEGRAM_CHAT_ID = "8069456620"
 client = Client(API_KEY, API_SECRET)
 
 # Kryptovalutapar och tidsramar
-SYMBOLS = ['shibusdt', 'ethusdt', 'dogeusdt', 'dotusdt', 'duskusdt', 'dogsusdt', 'dydxusdt', 'fttusdt', 'glmrusdt', 'hbarusdt']
+SYMBOLS = ['shibusdt', 'ethusdt', 'dogeusdt', 'dotusdt', 'duskusdt', 'dogsusdt', 'dydxusdt', 'fttusdt', 'glmrusdt', 'hbarusdt', 'bnbusdt']
 TIMEFRAMES = ['5m', '15m', '30m', '1h']
 SOCKET = f"wss://stream.binance.com:9443/ws/" + '/'.join([f"{symbol}@kline_{tf}" for symbol in SYMBOLS for tf in TIMEFRAMES])
 
